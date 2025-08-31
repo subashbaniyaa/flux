@@ -4,12 +4,11 @@ import fetch from 'node-fetch';
 const app = express();
 const port = 3000;
 
-// Single Hugging Face API key for both models
-const HF_API_KEY = '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'; // Your actual API key
+// Hugging Face User Access Token
+const HF_API_KEY = "hf_access-token";
 
 app.use(express.json());
 
-// Helper function to query Hugging Face API
 async function queryModel(apiKey, modelUrl, data) {
   try {
     const response = await fetch(modelUrl, {
@@ -27,11 +26,14 @@ async function queryModel(apiKey, modelUrl, data) {
     }
 
     const contentType = response.headers.get('content-type');
+
     if (contentType && contentType.includes('image/')) {
-      return response;
+
+      const buffer = await response.arrayBuffer();
+      return { buffer, contentType };
     } else {
-      const result = await response.text(); // Read response as text
-      throw new Error(`Expected image response but received something else: ${result}`);
+      const result = await response.json();
+      throw new Error(`Expected image response but received JSON: ${JSON.stringify(result)}`);
     }
   } catch (error) {
     console.error('Error querying Hugging Face API:', error.message);
@@ -39,8 +41,7 @@ async function queryModel(apiKey, modelUrl, data) {
   }
 }
 
-// Endpoint to interact with Hugging Face models
-app.get('/api/flux', async (req, res) => {
+app.get('/flux', async (req, res) => {
   const { gen, model } = req.query;
 
   if (!gen || !model) {
@@ -49,7 +50,6 @@ app.get('/api/flux', async (req, res) => {
 
   let modelUrl;
 
-  // Choose model URL based on the model parameter
   if (model === '1') {
     modelUrl = 'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-dev';
   } else if (model === '2') {
@@ -59,9 +59,9 @@ app.get('/api/flux', async (req, res) => {
   }
 
   try {
-    const response = await queryModel(HF_API_KEY, modelUrl, { inputs: gen });
-    res.setHeader('Content-Type', response.headers.get('content-type')); // Set the appropriate content type
-    response.body.pipe(res); // Efficiently stream the image data
+    const { buffer, contentType } = await queryModel(HF_API_KEY, modelUrl, { inputs: gen });
+    res.setHeader('Content-Type', contentType);
+    res.send(Buffer.from(buffer));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
